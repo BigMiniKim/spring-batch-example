@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:batch="http://www.springframework.org/schema/batch"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:tx="http://www.springframework.org/schema/tx"
+    xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+    xsi:schemaLocation="http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch.xsd
+  http://www.springframework.org/schema/jdbc http://www.springframework.org/schema/jdbc/spring-jdbc-4.3.xsd
+  http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+  http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd
+  http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.3.xsd">
+
+
+    <import resource="classpath:/common-context.xml" />  <!-- common-context.xml을 임포트 처리 -->
+    
+    <!-- job을 시작하기 전에 Person 테이블 생성 -->
+    <jdbc:initialize-database
+    	data-source="dataSource">
+    	<jdbc:script 
+    		location="classpath:com/health/example4/create-table.sql"/>	
+    </jdbc:initialize-database>
+    
+    <!-- 잡 : myJob4 -->
+    <job id="myJob4"
+    	xmlns="http://www.springframework.org/schema/batch">
+    	
+    	<description>
+    	 JDBC로 디비를 읽어서 CSV배열로 저장하는 객체
+    	</description>
+    	
+    	<step id="myStep1">
+    		<tasklet>
+    			<chunk 
+    				reader="examReader"
+    				processor="examProcessor"
+    				writer="examWriter"
+    				commit-interval="10"
+    			/>
+    		</tasklet>
+    	</step>
+    </job>
+    
+    
+<bean id="examReader"
+        class="org.springframework.batch.item.database.JdbcCursorItemReader">
+        <property name="dataSource" ref="dataSource" />
+
+        <property name="sql">
+ 			<value>
+ 				<![CDATA[
+ 				SELECT CLASS_NAME, STUDENT_NAME, SCORE FROM EXAM ORDER BY CLASS_NAME, STUDENT_NAME, SCORE 				
+ 				]]>
+ 			</value> 
+        </property>
+
+        <property name="rowMapper" ref="examRowMapper" />
+    </bean>
+    
+    <!-- JDBC reader로 읽은 데이터를 자바 객체로 매핑해 줍니다. -->
+    <bean id="examRowMapper" class="org.springframework.jdbc.core.BeanPropertyRowMapper" scope="step">
+    	<property name = "mappedClass" value="com.health.example4.Exam"></property>
+    </bean>
+    <!--  Exam 데이터 가공 -->
+    <bean id="examProcessor"
+    	class="com.health.example4.ExamProcessor" scope="step" />
+    
+	<!-- JDBC writer.Insert나 Update 쿼리를 실행할 수 있다 -->
+	<bean id="examWriter" class="org.springframework.batch.item.file.FlatFileItemWriter" scope="step">
+		<!--  Aggregate 은 모으다...한라이에 어떻게 쓸지를 설정 -->
+		<!--  콤마로 필드를 구분, className, studentName, grade 순서대로 값을 쓰도록 설정 -->
+		<property name="lineAggregator">
+			<bean class="org.springframework.batch.item.file.transform.DelimitedLineAggregator">			
+				<property name="delimiter" value=","/>
+				<property name="fieldExtractor">
+					<bean class="org.springframework.batch.item.file.transform.BeanWrapperFieldExtractor">
+						<property name="names" value="className, studentName, grade"></property>
+					</bean>
+				</property>
+			</bean>
+		</property>
+		
+		<!-- 쓸파일 위치를 지정, 배치가 종료되면 root레벨(pom.xml과 같은 위치에)에 output 폴더를 생성 output/com/health/example4/output.csv -->		
+		<property name="resource">
+			<bean class = "org.springframework.core.io.FileSystemResource">
+				<constructor-arg name="path" value="output/com/health/example4/output.csv"></constructor-arg>
+			</bean>				
+    	</property>
+    	
+    	<!-- 파일이 존재하면 삭제하고 새로 만들기. -->
+     	<property name="shouldDeleteIfExists" value="true"/>
+    </bean>
+
+</beans>
